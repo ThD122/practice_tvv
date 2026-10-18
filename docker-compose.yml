@@ -6,8 +6,12 @@ x-wordpress-env: &wordpress-env
   WORDPRESS_DB_USER: ${MYSQL_USER:?}
   WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD:?}
   WORDPRESS_CONFIG_EXTRA: |
-    define('WP_HOME', getenv('WP_PUBLIC_URL'));
-    define('WP_SITEURL', getenv('WP_PUBLIC_URL'));
+    $$public_url = getenv('WP_PUBLIC_URL');
+    if (isset($$_SERVER['HTTP_HOST']) && in_array($$_SERVER['HTTP_HOST'], ['localhost:8080', 'localhost:8081', 'localhost:8082'], true)) {
+        $$public_url = 'http://' . $$_SERVER['HTTP_HOST'];
+    }
+    define('WP_HOME', $$public_url);
+    define('WP_SITEURL', $$public_url);
     define('WP_ENVIRONMENT_TYPE', 'local');
 
 x-wordpress: &wordpress
@@ -71,6 +75,28 @@ services:
         condition: service_healthy
       wordpress1:
         condition: service_healthy
+
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 128m
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - wordpress_network
+    depends_on:
+      wordpress1:
+        condition: service_healthy
+      wordpress2:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1/healthz]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   wpcli:
     image: wordpress:cli-php8.3
