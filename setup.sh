@@ -7,12 +7,19 @@ if [ ! -f .env ]; then
 fi
 docker compose config --quiet
 docker compose up -d --wait
+docker compose exec -T nginx nginx -s reload
 docker compose run --rm --no-deps --entrypoint sh wpcli -ec '
   if ! wp core is-installed; then
     wp core install --url="$WP_PUBLIC_URL" --title="Практика Docker — WordPress" \
       --admin_user="$WP_ADMIN_USER" --admin_password="$WP_ADMIN_PASSWORD" \
       --admin_email="$WP_ADMIN_EMAIL" --skip-email
   fi
+  if ! wp plugin is-installed redis-cache; then
+    wp plugin install redis-cache --version=2.7.0
+  fi
+  wp plugin activate redis-cache
+  wp redis enable
+  wp redis status
   page_id=$(wp post list --post_type=page --name=docker-test --field=ID)
   if [ -z "$page_id" ]; then
     wp post create --post_type=page --post_status=publish \

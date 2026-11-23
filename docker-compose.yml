@@ -13,6 +13,12 @@ x-wordpress-env: &wordpress-env
     define('WP_HOME', $$public_url);
     define('WP_SITEURL', $$public_url);
     define('WP_ENVIRONMENT_TYPE', 'local');
+    define('WP_REDIS_HOST', 'redis');
+    define('WP_REDIS_PORT', 6379);
+    define('WP_REDIS_CLIENT', 'predis');
+    define('WP_REDIS_PREFIX', 'wordpress-practice:');
+    define('WP_REDIS_TIMEOUT', 1);
+    define('WP_REDIS_READ_TIMEOUT', 1);
 
 x-wordpress: &wordpress
   image: wordpress:php8.3-apache
@@ -31,6 +37,20 @@ x-wordpress: &wordpress
     start_period: 20s
 
 services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 128m
+    command: [redis-server, --maxmemory, 64mb, --maxmemory-policy, allkeys-lru, --save, "", --appendonly, "no"]
+    networks:
+      - wordpress_network
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   mysql:
     image: mysql:8.4
     restart: unless-stopped
@@ -60,6 +80,8 @@ services:
     ports:
       - "127.0.0.1:8081:80"
     depends_on:
+      redis:
+        condition: service_healthy
       mysql:
         condition: service_healthy
 
@@ -71,6 +93,8 @@ services:
     ports:
       - "127.0.0.1:8082:80"
     depends_on:
+      redis:
+        condition: service_healthy
       mysql:
         condition: service_healthy
       wordpress1:
@@ -105,6 +129,7 @@ services:
     environment:
       <<: *wordpress-env
       WP_PUBLIC_URL: http://localhost:8081
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
       WP_ADMIN_USER: ${WP_ADMIN_USER:?}
       WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD:?}
       WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL:?}
